@@ -1,0 +1,22 @@
+.env
+.env.local
+
+# Doc détaillée (locale uniquement)
+README_FONCTIONNELLE.md
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Node
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Media / certs
+nginx/certs/*
+!nginx/certs/.gitkeep
