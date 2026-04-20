@@ -52,7 +52,10 @@ services:
       - "3000"
 
   nginx:
-    build: ./nginx
+    build:
+      context: ./nginx
+      args:
+        NGINX_CONF: nginx.prod.conf
     restart: unless-stopped
     depends_on:
       - backend

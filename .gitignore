@@ -1,6 +1,9 @@
 .env
 .env.local
 
+# Docker Compose overrides locaux (dev) — ne doivent pas partir sur la VM
+docker-compose.override.yml
+
 # Doc détaillée (locale uniquement)
 README_FONCTIONNELLE.md
 *.log
