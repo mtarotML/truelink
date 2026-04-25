@@ -18,7 +18,16 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: str = "http://localhost,http://localhost:3000"
 
-    ADMIN_EMAIL: str = "martintarot53@gmail.com"
+    # Comma-separated — promoted to admin on Google sign-in (set via env, e.g. .env)
+    ADMIN_EMAIL: str = ""
+
+    @property
+    def admin_email_set(self) -> frozenset[str]:
+        return frozenset(
+            e.strip().lower()
+            for e in (self.ADMIN_EMAIL or "").split(",")
+            if e.strip()
+        )
 
     @property
     def cors_origins_list(self) -> list[str]:

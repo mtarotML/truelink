@@ -31,8 +31,7 @@ async def auth_google(
     result = await db.execute(select(User).where(User.email == email))
     user = result.scalar_one_or_none()
 
-    admin_email = (settings.ADMIN_EMAIL or "").lower().strip()
-    should_be_admin = bool(admin_email) and email == admin_email
+    should_be_admin = email in settings.admin_email_set
 
     if user is None:
         if payload.device_id:
