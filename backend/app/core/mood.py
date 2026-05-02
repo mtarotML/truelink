@@ -1,76 +1,84 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
-from concurrent.futures import ThreadPoolExecutor
+
+from groq import APIError, AsyncGroq
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "j-hartmann/emotion-english-distilroberta-base"
+_RETRY_DELAYS = [3, 8]  # seconds between attempts (3 total attempts)
 
-EMOTION_WEIGHTS = {
-    "joy":      +1.0,
-    "surprise": +0.3,
-    "neutral":   0.0,
-    "fear":     -0.5,
-    "sadness":  -0.8,
-    "anger":    -1.0,
-    "disgust":  -0.9,
-}
+_client: AsyncGroq | None = None
 
-_classifier = None
-_executor = ThreadPoolExecutor(max_workers=1)
+_SYSTEM_PROMPT = (
+    "You are a conversation mood analyzer. "
+    "Given a short chat exchange, return ONLY a valid JSON object with two fields:\n"
+    '  "mood_score": a float between -1.0 (very negative) and 1.0 (very positive)\n'
+    '  "mood_label": one of exactly these strings: "Very Positive", "Positive", "Neutral", "Negative", "Very Negative"\n'
+    "No explanation, no markdown, no extra text — only the raw JSON object."
+)
 
-
-def _load_classifier() -> None:
-    global _classifier
-    if _classifier is not None:
-        return
-    from transformers import pipeline  # noqa: PLC0415
-    logger.info("Loading mood classifier %s – ~80 MB on first run…", MODEL_NAME)
-    _classifier = pipeline(
-        "text-classification",
-        model=MODEL_NAME,
-        top_k=None,
-        device=-1,
-    )
-    logger.info("Mood classifier loaded.")
+_FALLBACK = {"mood_score": 0.0, "mood_label": "Neutral"}
 
 
-def _analyze_sync(messages: list[dict]) -> dict:
-    """Synchronous analysis — runs in ThreadPoolExecutor."""
-    _load_classifier()
+def _get_client() -> AsyncGroq:
+    global _client
+    if _client is None:
+        _client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+    return _client
 
-    last_10 = messages[-5:]
-    lines = [
+
+def _format_conversation(messages: list[dict]) -> str:
+    return "\n".join(
         f"{'[You]' if m['sender'] == 'user' else '[Match]'}: {m['text']}"
-        for m in last_10
-    ]
-    conversation = "\n".join(lines)
-
-    raw_scores = _classifier(conversation[:512])[0]
-    emotion_scores = {item["label"]: round(item["score"], 4) for item in raw_scores}
-
-    mood_score = sum(
-        emotion_scores.get(emotion, 0) * weight
-        for emotion, weight in EMOTION_WEIGHTS.items()
+        for m in messages[-10:]
     )
-    mood_score = round(max(-1.0, min(1.0, mood_score)), 4)
 
-    if mood_score >= 0.5:
-        mood_label = "Very Positive"
-    elif mood_score >= 0.15:
-        mood_label = "Positive"
-    elif mood_score >= -0.15:
-        mood_label = "Neutral"
-    elif mood_score >= -0.5:
-        mood_label = "Negative"
-    else:
-        mood_label = "Very Negative"
 
-    return {"mood_score": mood_score, "mood_label": mood_label}
+def _parse_response(raw: str) -> dict:
+    result = json.loads(raw)
+    score = round(max(-1.0, min(1.0, float(result["mood_score"]))), 4)
+    label = result["mood_label"]
+    if label not in {"Very Positive", "Positive", "Neutral", "Negative", "Very Negative"}:
+        label = "Neutral"
+    return {"mood_score": score, "mood_label": label}
 
 
 async def analyze_mood(messages: list[dict]) -> dict:
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, _analyze_sync, messages)
+    if not messages:
+        return _FALLBACK
+
+    conversation = _format_conversation(messages)
+    last_exc: Exception | None = None
+
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            logger.warning("Groq mood error — retrying in %ds (attempt %d/3)", delay, attempt + 1)
+            await asyncio.sleep(delay)
+        try:
+            response = await _get_client().chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": conversation},
+                ],
+                max_tokens=60,
+                temperature=0.0,
+            )
+            return _parse_response(response.choices[0].message.content.strip())
+        except APIError as e:
+            last_exc = e
+            logger.warning("Groq API error for mood (attempt %d/3): %s", attempt + 1, e)
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            last_exc = e
+            logger.warning("Invalid mood response from Groq (attempt %d/3): %s", attempt + 1, e)
+        except Exception as e:
+            last_exc = e
+            logger.warning("Unexpected mood error (attempt %d/3): %s", attempt + 1, e)
+
+    logger.error("Mood analysis failed after 3 attempts: %s", last_exc)
+    return _FALLBACK

@@ -82,7 +82,7 @@ async def _fictive_reply_task(
 
 
 async def _mood_analysis_task(real_user_id: uuid.UUID, peer_id: uuid.UUID) -> None:
-    """Compute mood for the last 5 messages and upsert into conversation_moods."""
+    """Compute mood for the last 10 messages and upsert into conversation_moods."""
     try:
         async with SessionLocal() as db:
             stmt = (
@@ -100,7 +100,7 @@ async def _mood_analysis_task(real_user_id: uuid.UUID, peer_id: uuid.UUID) -> No
                     )
                 )
                 .order_by(Message.created_at.desc())
-                .limit(5)
+                .limit(10)
             )
             rows = list(reversed((await db.execute(stmt)).scalars().all()))
 

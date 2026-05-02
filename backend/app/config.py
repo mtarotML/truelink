@@ -13,6 +13,8 @@ class Settings(BaseSettings):
 
     GOOGLE_CLIENT_ID: str = ""
 
+    GROQ_API_KEY: str = ""
+
     MEDIA_ROOT: str = "/media"
     PUBLIC_MEDIA_BASE: str = "/media"
 

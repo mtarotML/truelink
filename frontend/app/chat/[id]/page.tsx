@@ -65,41 +65,26 @@ function formatDayLabel(iso: string): string {
   });
 }
 
-const MOOD_CONFIG: Record<
-  string,
-  { emoji: string; bar: string; text: string; bg: string }
-> = {
-  "Very Positive": {
-    emoji: "🔥",
-    bar: "bg-emerald-400",
-    text: "text-emerald-300",
-    bg: "bg-emerald-500/10 border-emerald-500/20",
-  },
-  Positive: {
-    emoji: "😊",
-    bar: "bg-green-400",
-    text: "text-green-300",
-    bg: "bg-green-500/10 border-green-500/20",
-  },
-  Neutral: {
-    emoji: "😐",
-    bar: "bg-white/50",
-    text: "text-white/60",
-    bg: "bg-white/5 border-white/10",
-  },
-  Negative: {
-    emoji: "😕",
-    bar: "bg-amber-400",
-    text: "text-amber-300",
-    bg: "bg-amber-500/10 border-amber-500/20",
-  },
-  "Very Negative": {
-    emoji: "😞",
-    bar: "bg-red-400",
-    text: "text-red-300",
-    bg: "bg-red-500/10 border-red-500/20",
-  },
-};
+const MOOD_GRADIENT = "linear-gradient(to right, #FCA5A5, #FDE68A, #86EFAC)";
+
+function moodColorAt(pct: number): string {
+  const stops: [number, [number, number, number]][] = [
+    [0,   [252, 165, 165]],
+    [50,  [253, 230, 138]],
+    [100, [134, 239, 172]],
+  ];
+  let lo = stops[0], hi = stops[stops.length - 1];
+  for (let i = 0; i < stops.length - 1; i++) {
+    if (pct >= stops[i][0] && pct <= stops[i + 1][0]) {
+      lo = stops[i]; hi = stops[i + 1]; break;
+    }
+  }
+  const t = lo[0] === hi[0] ? 0 : (pct - lo[0]) / (hi[0] - lo[0]);
+  const r = Math.round(lo[1][0] + (hi[1][0] - lo[1][0]) * t);
+  const g = Math.round(lo[1][1] + (hi[1][1] - lo[1][1]) * t);
+  const b = Math.round(lo[1][2] + (hi[1][2] - lo[1][2]) * t);
+  return `rgb(${r},${g},${b})`;
+}
 
 export default function ChatPage() {
   const router = useRouter();
@@ -304,17 +289,45 @@ export default function ChatPage() {
               {peer?.first_name ?? "…"}
             </p>
             {mood?.mood_label && mood.mood_score !== null ? (
-              <div className="mt-1 flex items-center gap-1.5">
-                <span className="text-[11px] leading-none">
-                  {MOOD_CONFIG[mood.mood_label]?.emoji}
-                </span>
-                <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
-                  <div
-                    className={`h-full rounded-full transition-all duration-700 ${MOOD_CONFIG[mood.mood_label]?.bar ?? "bg-white/50"}`}
-                    style={{ width: `${Math.round(((mood.mood_score + 1) / 2) * 100)}%` }}
-                  />
-                </div>
-              </div>
+              (() => {
+                const pct = Math.round(((mood.mood_score + 1) / 2) * 100);
+                const knobColor = moodColorAt(pct);
+                return (
+                  <div className="mt-1 flex items-center gap-2">
+                    {/* label */}
+                    <span className="shrink-0 text-[9px] uppercase tracking-widest text-white/40 leading-none">
+                      mood
+                    </span>
+                    {/* track */}
+                    <div className="relative flex items-center">
+                      <div
+                        className="relative h-[3px] w-28 overflow-visible rounded-full"
+                        style={{ background: "rgba(255,255,255,0.12)" }}
+                      >
+                        <div
+                          className="absolute inset-0 rounded-full"
+                          style={{ background: MOOD_GRADIENT, opacity: 0.55 }}
+                        />
+                        {/* knob */}
+                        <div
+                          className="absolute top-1/2 h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-white transition-all duration-700"
+                          style={{
+                            left: `${pct}%`,
+                            boxShadow: `0 0 0 2px rgba(255,255,255,0.15), 0 0 8px 3px ${knobColor}99`,
+                          }}
+                        />
+                      </div>
+                    </div>
+                    {/* status */}
+                    <span
+                      className="shrink-0 text-[10px] font-medium leading-none transition-colors duration-700"
+                      style={{ color: knobColor }}
+                    >
+                      {mood.mood_label.toLowerCase()}
+                    </span>
+                  </div>
+                );
+              })()
             ) : (
               <p className="text-[11px] text-white/50">Active now</p>
             )}

@@ -10,6 +10,4 @@ google-auth==2.36.0
 requests==2.32.3
 pillow==11.0.0
 email-validator==2.2.0
-# LLM inference – torch installed separately in Dockerfile (CPU-only wheel)
-transformers>=4.45.0
-accelerate>=0.26.0
+groq>=0.11.0

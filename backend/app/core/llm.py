@@ -2,37 +2,52 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
+import random
 
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from groq import APIError, AsyncGroq
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
-MODEL_NAME = "Qwen/Qwen2.5-0.5B-Instruct"
-
-FORBIDDEN_PHRASES = ["AI", "language model", "assist", "provide", "NLP", "designed to"]
-
 _BASE_SYSTEM_CONTENT = (
-    "Role: A casual person on a dating app. "
-    "Rule 1: NEVER say 'How can I assist you?' or 'What brings you here?'. "
-    "Rule 2: Do not be a helper. Be a friend. "
-    "Rule 3: Use short, lazy sentences. No formal grammar. "
-    "Example: 'not much, just chillin' or 'good, you?'"
+    "You are a real person on a dating app, not an AI. Never break character. "
+    "Never say you are an AI, a language model, or a bot. "
+    "Keep replies very short (1–2 sentences max). "
+    "Be casual, relaxed, and friendly — like texting a friend. "
+    "Use simple, informal language. No formal grammar. No emojis overload. "
+    "Examples of good replies: 'haha yeah same', 'not much, u?', 'omg really?', 'that's so cool lol'."
 )
 
 _PERSONA_EXTRAS: dict[str, str] = {
     "fictive.marc@truelink.internal": (
-        "You are Marc, 28, a French guy into hiking and photography."
+        "Your name is Marc. You're 28, into hiking and photography. "
+        "You're laid-back and a bit flirty."
     ),
     "fictive.claire@truelink.internal": (
-        "You are Claire, 26, a French graphic designer who loves cooking and travel."
+        "Your name is Claire. You're 26, a graphic designer who loves cooking and travel. "
+        "You're warm, witty, and spontaneous."
     ),
 }
 
-_tokenizer = None
-_model = None
-# Serialise inference: one generation at a time, non-blocking for the event loop
-_executor = ThreadPoolExecutor(max_workers=1)
+# Shown when all retries are exhausted — stays in character
+_FALLBACK_REPLIES = [
+    "haha give me a sec",
+    "lol sorry, one sec",
+    "hold on",
+    "...",
+]
+
+_RETRY_DELAYS = [3, 8]  # seconds between attempts (3 total attempts)
+
+_client: AsyncGroq | None = None
+
+
+def _get_client() -> AsyncGroq:
+    global _client
+    if _client is None:
+        _client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+    return _client
 
 
 def build_system_message(email: str) -> dict:
@@ -41,51 +56,29 @@ def build_system_message(email: str) -> dict:
     return {"role": "system", "content": content}
 
 
-def _load_model() -> None:
-    global _tokenizer, _model
-    if _model is not None:
-        return
-    logger.info("Loading LLM %s – this may take a moment on first run…", MODEL_NAME)
-    _tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
-    _model = AutoModelForCausalLM.from_pretrained(
-        MODEL_NAME,
-        torch_dtype="auto",
-        device_map="auto",
-    )
-    logger.info("LLM loaded.")
-
-
-def _generate_sync(messages: list[dict]) -> str:
-    _load_model()
-
-    bad_words_ids = [
-        _tokenizer.encode(w, add_special_tokens=False) for w in FORBIDDEN_PHRASES
-    ]
-
-    text = _tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    model_inputs = _tokenizer([text], return_tensors="pt").to(_model.device)
-
-    generated_ids = _model.generate(
-        **model_inputs,
-        max_new_tokens=30,
-        do_sample=True,
-        temperature=0.8,
-        top_p=0.9,
-        repetition_penalty=1.2,
-        bad_words_ids=bad_words_ids,
-    )
-
-    response_ids = [
-        output_ids[len(input_ids):]
-        for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-    ]
-    return _tokenizer.batch_decode(response_ids, skip_special_tokens=True)[0].strip()
-
-
 async def generate_reply(messages: list[dict]) -> str:
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(_executor, _generate_sync, messages)
+    client = _get_client()
+    last_exc: Exception | None = None
+
+    for attempt, delay in enumerate([0] + _RETRY_DELAYS):
+        if delay:
+            logger.warning("Groq LLM error — retrying in %ds (attempt %d/3)", delay, attempt + 1)
+            await asyncio.sleep(delay)
+        try:
+            response = await client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=messages,
+                max_tokens=60,
+                temperature=0.9,
+                top_p=0.95,
+            )
+            return response.choices[0].message.content.strip()
+        except APIError as e:
+            last_exc = e
+            logger.warning("Groq API error (attempt %d/3): %s", attempt + 1, e)
+        except Exception as e:
+            last_exc = e
+            logger.warning("Unexpected error calling Groq LLM (attempt %d/3): %s", attempt + 1, e)
+
+    logger.error("Groq LLM failed after 3 attempts: %s", last_exc)
+    return random.choice(_FALLBACK_REPLIES)
