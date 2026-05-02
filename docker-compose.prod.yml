@@ -1,0 +1,21 @@
+# Prod overrides — apply with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# Backend and frontend are NOT exposed to the host.
+# All traffic flows through nginx (ports 80/443).
+services:
+  nginx:
+    build: ./nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - frontend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - media:/media:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+
+volumes:
+  media:

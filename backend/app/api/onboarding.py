@@ -31,19 +31,10 @@ async def complete_onboarding(
             detail="profile already completed",
         )
 
-    if device_id:
-        dupe = await db.execute(
-            select(User).where(
-                User.device_id == device_id,
-                User.id != current_user.id,
-            )
-        )
-        if dupe.scalar_one_or_none() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="this device is already associated with another account",
-            )
-        current_user.device_id = device_id
+    if device_id and not current_user.device_id:
+        taken = await db.execute(select(User).where(User.device_id == device_id))
+        if taken.scalar_one_or_none() is None:
+            current_user.device_id = device_id
 
     raw = await photo.read()
     if len(raw) == 0:

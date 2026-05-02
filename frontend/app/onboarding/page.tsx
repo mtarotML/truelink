@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/Button";
@@ -194,7 +194,7 @@ export default function OnboardingPage() {
         </p>
       )}
 
-      <div className="flex flex-col gap-3">
+      <div className="mt-8 flex flex-col gap-5">
         {step < 2 ? (
           <Button disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
             Continue
@@ -217,6 +217,13 @@ export default function OnboardingPage() {
             Back
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => signOut({ callbackUrl: "/" })}
+          className="text-sm text-white/40 hover:text-white/70"
+        >
+          Sign out
+        </button>
       </div>
     </main>
   );

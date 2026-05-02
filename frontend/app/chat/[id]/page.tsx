@@ -12,14 +12,21 @@ import {
   useState,
 } from "react";
 
-import { apiGet, apiPostJson, mediaUrl } from "@/lib/api";
+import { apiDelete, apiGet, apiPostJson, mediaUrl } from "@/lib/api";
 import { useEffectiveUser } from "@/lib/useEffectiveUser";
+
+interface MoodData {
+  mood_score: number | null;
+  mood_label: string | null;
+  computed_at: string | null;
+}
 
 interface PeerProfile {
   id: string;
   first_name: string | null;
   photo_url: string | null;
   intent: "long_term" | "short_term" | null;
+  is_fictive: boolean;
 }
 
 interface Message {
@@ -58,6 +65,42 @@ function formatDayLabel(iso: string): string {
   });
 }
 
+const MOOD_CONFIG: Record<
+  string,
+  { emoji: string; bar: string; text: string; bg: string }
+> = {
+  "Very Positive": {
+    emoji: "🔥",
+    bar: "bg-emerald-400",
+    text: "text-emerald-300",
+    bg: "bg-emerald-500/10 border-emerald-500/20",
+  },
+  Positive: {
+    emoji: "😊",
+    bar: "bg-green-400",
+    text: "text-green-300",
+    bg: "bg-green-500/10 border-green-500/20",
+  },
+  Neutral: {
+    emoji: "😐",
+    bar: "bg-white/50",
+    text: "text-white/60",
+    bg: "bg-white/5 border-white/10",
+  },
+  Negative: {
+    emoji: "😕",
+    bar: "bg-amber-400",
+    text: "text-amber-300",
+    bg: "bg-amber-500/10 border-amber-500/20",
+  },
+  "Very Negative": {
+    emoji: "😞",
+    bar: "bg-red-400",
+    text: "text-red-300",
+    bg: "bg-red-500/10 border-red-500/20",
+  },
+};
+
 export default function ChatPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -71,6 +114,10 @@ export default function ChatPage() {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mood, setMood] = useState<MoodData | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [resetPending, setResetPending] = useState(false);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -101,20 +148,49 @@ export default function ChatPage() {
     }
   }, [peerId]);
 
+  const loadMood = useCallback(async () => {
+    if (!peerId) return;
+    try {
+      const data = await apiGet<MoodData>(`/messages/${peerId}/mood`);
+      setMood(data);
+    } catch {
+      // mood is optional — silently ignore errors
+    }
+  }, [peerId]);
+
+  const loadTyping = useCallback(async () => {
+    if (!peerId) return;
+    try {
+      const data = await apiGet<{ typing: boolean }>(`/messages/${peerId}/typing`);
+      setIsTyping(data.typing);
+    } catch {
+      setIsTyping(false);
+    }
+  }, [peerId]);
+
   useEffect(() => {
     if (status !== "authenticated") return;
     void loadPeer();
     void loadMessages();
-    const interval = setInterval(() => {
-      void loadMessages();
-    }, 3000);
-    return () => clearInterval(interval);
-  }, [status, loadPeer, loadMessages]);
+    void loadMood();
+    void loadTyping();
+    const msgInterval = setInterval(() => void loadMessages(), 3000);
+    const moodInterval = setInterval(() => void loadMood(), 6000);
+    const typingInterval = setInterval(() => void loadTyping(), 1000);
+    return () => {
+      clearInterval(msgInterval);
+      clearInterval(moodInterval);
+      clearInterval(typingInterval);
+    };
+  }, [status, loadPeer, loadMessages, loadMood, loadTyping]);
 
+  const prevMessageCountRef = useRef(0);
   useEffect(() => {
-    if (messages && messages.length > 0) {
+    const count = messages?.length ?? 0;
+    if (count > prevMessageCountRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
+    prevMessageCountRef.current = count;
   }, [messages]);
 
   const grouped = useMemo(() => {
@@ -163,6 +239,24 @@ export default function ChatPage() {
     }
   }
 
+  function handleResetClick() {
+    if (!resetPending) {
+      setResetPending(true);
+      resetTimerRef.current = setTimeout(() => setResetPending(false), 3000);
+      return;
+    }
+    if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    setResetPending(false);
+    setMessages([]);
+    setMood(null);
+    setIsTyping(false);
+    setError(null);
+    apiDelete(`/messages/${peerId}`).catch((err: unknown) => {
+      setError((err as Error).message || "Couldn't reset conversation.");
+      void loadMessages();
+    });
+  }
+
   if (status !== "authenticated") {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -194,7 +288,7 @@ export default function ChatPage() {
             />
           </svg>
         </Link>
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-navy-soft">
             {peerPhoto ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -209,9 +303,36 @@ export default function ChatPage() {
             <p className="truncate text-sm font-semibold text-white">
               {peer?.first_name ?? "…"}
             </p>
-            <p className="text-[11px] text-white/50">Active now</p>
+            {mood?.mood_label && mood.mood_score !== null ? (
+              <div className="mt-1 flex items-center gap-1.5">
+                <span className="text-[11px] leading-none">
+                  {MOOD_CONFIG[mood.mood_label]?.emoji}
+                </span>
+                <div className="h-1.5 w-40 overflow-hidden rounded-full bg-white/10">
+                  <div
+                    className={`h-full rounded-full transition-all duration-700 ${MOOD_CONFIG[mood.mood_label]?.bar ?? "bg-white/50"}`}
+                    style={{ width: `${Math.round(((mood.mood_score + 1) / 2) * 100)}%` }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-white/50">Active now</p>
+            )}
           </div>
         </div>
+
+        {peer?.is_fictive && (
+          <button
+            onClick={handleResetClick}
+            className={`ml-2 shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition active:scale-95 ${
+              resetPending
+                ? "border-pink bg-pink/10 text-pink"
+                : "border-white/10 text-white/50 hover:border-white/30 hover:text-white/80"
+            }`}
+          >
+            {resetPending ? "Sure?" : "Reset"}
+          </button>
+        )}
       </header>
 
       <section className="flex-1 overflow-y-auto px-4 py-4">
@@ -264,6 +385,16 @@ export default function ChatPage() {
               })}
             </div>
           ))}
+          {isTyping && (
+            <div className="mt-1 flex justify-start">
+              <div className="flex items-center gap-1 rounded-[22px] rounded-bl-md bg-white/10 px-4 py-3">
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:0ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:150ms]" />
+                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+
           <div ref={bottomRef} />
         </div>
       </section>

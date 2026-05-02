@@ -13,6 +13,7 @@ class UserPublic(BaseModel):
     first_name: str | None
     photo_url: str | None
     intent: Intent | None
+    is_fictive: bool
 
 
 class UserMe(BaseModel):

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -8,8 +8,6 @@ from app.models.user import User
 from app.schemas.user import UserPublic
 
 router = APIRouter(tags=["discovery"])
-
-DISCOVERY_COUNT = 3
 
 
 @router.get("/discovery", response_model=list[UserPublic])
@@ -26,14 +24,13 @@ async def discovery(
     stmt = (
         select(User)
         .where(
-            User.id != current_user.id,
-            User.onboarded.is_(True),
+            User.is_fictive.is_(True),
             User.gender == current_user.gender_pref,
-            User.intent == current_user.intent,
         )
-        .order_by(func.random())
-        .limit(DISCOVERY_COUNT)
+        .limit(1)
     )
     result = await db.execute(stmt)
-    users = result.scalars().all()
-    return [UserPublic.model_validate(u) for u in users]
+    user = result.scalars().first()
+    if user is None:
+        return []
+    return [UserPublic.model_validate(user)]

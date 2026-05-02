@@ -28,8 +28,11 @@ services:
       PUBLIC_MEDIA_BASE: ${PUBLIC_MEDIA_BASE}
       CORS_ORIGINS: ${CORS_ORIGINS}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
+      HF_HOME: /hf_cache
     volumes:
       - media:/media
+      - ./fake_profile:/fake_profile:ro
+      - hf_cache:/hf_cache
     expose:
       - "8000"
 
@@ -51,22 +54,7 @@ services:
     expose:
       - "3000"
 
-  nginx:
-    build:
-      context: ./nginx
-      args:
-        NGINX_CONF: nginx.prod.conf
-    restart: unless-stopped
-    depends_on:
-      - backend
-      - frontend
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - media:/media:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-
 volumes:
   pgdata:
   media:
+  hf_cache:

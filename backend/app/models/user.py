@@ -50,6 +50,9 @@ class User(Base):
     )
 
     onboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_fictive: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default="false"
+    )
 
     role: Mapped[Role] = mapped_column(
         Enum(Role, name="role_enum"),

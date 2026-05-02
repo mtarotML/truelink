@@ -11,7 +11,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
+# Install torch CPU-only first to avoid pulling the 2 GB CUDA wheel
+RUN pip install --upgrade pip \
+    && pip install torch --index-url https://download.pytorch.org/whl/cpu \
+    && pip install -r requirements.txt
 
 COPY . .
 
@@ -19,4 +22,4 @@ RUN mkdir -p /media
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

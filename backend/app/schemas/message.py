@@ -6,6 +6,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.schemas.user import UserPublic
 
 
+class MoodOut(BaseModel):
+    mood_score: float | None = None
+    mood_label: str | None = None
+    computed_at: datetime | None = None
+
+
 class MessageOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

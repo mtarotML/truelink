@@ -51,13 +51,7 @@ export function ProfileCard({
             compact ? "px-1.5 pb-2 pt-8" : "px-5 pb-5 pt-16"
           }`}
         >
-          <div
-            className={
-              compact
-                ? "flex flex-col gap-1"
-                : "flex items-end justify-between gap-3"
-            }
-          >
+          <div className={compact ? "" : "flex items-end justify-between gap-3"}>
             <h3
               className={`font-bold leading-tight text-white ${
                 compact ? "line-clamp-2 text-[11px] sm:text-xs" : "text-2xl"
@@ -65,19 +59,9 @@ export function ProfileCard({
             >
               {profile.first_name ?? "Someone"}
             </h3>
-            {profile.intent && (
-              <span
-                className={`rounded-pill bg-pink font-semibold text-white shadow-pop ${
-                  compact
-                    ? "shrink-0 px-1.5 py-0.5 text-[9px] leading-none"
-                    : "px-3 py-1 text-xs"
-                }`}
-              >
-                {compact
-                  ? profile.intent === "long_term"
-                    ? "LT"
-                    : "ST"
-                  : INTENT_LABEL[profile.intent]}
+            {!compact && profile.intent && (
+              <span className="rounded-pill bg-pink px-3 py-1 text-xs font-semibold text-white shadow-pop">
+                {INTENT_LABEL[profile.intent]}
               </span>
             )}
           </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Logo } from "@/components/Logo";
 import { ProfileCard } from "@/components/ProfileCard";
@@ -17,26 +17,20 @@ interface Profile {
   intent: "long_term" | "short_term" | null;
 }
 
+function EmptySlot() {
+  return (
+    <div className="flex-1 overflow-hidden rounded-2xl border border-dashed border-white/10 bg-navy-soft/40">
+      <div className="aspect-[3/4] w-full" />
+    </div>
+  );
+}
+
 export default function DiscoveryPage() {
   const router = useRouter();
   const { status } = useSession();
   const me = useEffectiveUser();
-  const [profiles, setProfiles] = useState<Profile[] | null>(null);
+  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await apiGet<Profile[]>("/discovery");
-      setProfiles(data);
-    } catch (err) {
-      setError((err as Error).message || "Couldn't load matches.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -45,9 +39,11 @@ export default function DiscoveryPage() {
         router.replace("/onboarding");
         return;
       }
-      void load();
+      apiGet<Profile[]>("/discovery")
+        .then((data) => setProfile(data[0] ?? null))
+        .catch((err) => setError((err as Error).message || "Couldn't load your match."));
     }
-  }, [status, me, router, load]);
+  }, [status, me, router]);
 
   if (status !== "authenticated") {
     return (
@@ -86,16 +82,8 @@ export default function DiscoveryPage() {
         </div>
       </header>
 
-      <div className="mt-6 flex items-center justify-between">
+      <div className="mt-6">
         <h2 className="text-xl font-semibold">Matchs</h2>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          className="rounded-pill border border-white/15 px-4 py-1.5 text-xs text-white/80 transition disabled:opacity-50"
-        >
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
       </div>
 
       {error && (
@@ -105,23 +93,19 @@ export default function DiscoveryPage() {
       )}
 
       <section className="mt-4">
-        {profiles === null && loading && (
+        {profile === undefined ? (
           <div className="flex justify-center py-10">
             <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-pink border-t-transparent" />
           </div>
-        )}
-
-        {profiles !== null && profiles.length === 0 && !loading && (
-          <div className="rounded-3xl border border-white/10 bg-navy-soft px-5 py-8 text-center text-sm text-white/70">
-            No matches right now. Check back a little later.
-          </div>
-        )}
-
-        {profiles !== null && profiles.length > 0 && (
+        ) : (
           <div className="flex w-full gap-2 sm:gap-3">
-            {profiles.map((p) => (
-              <ProfileCard key={p.id} profile={p} compact />
-            ))}
+            {profile ? (
+              <ProfileCard profile={profile} compact />
+            ) : (
+              <EmptySlot />
+            )}
+            <EmptySlot />
+            <EmptySlot />
           </div>
         )}
       </section>

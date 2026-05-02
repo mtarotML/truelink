@@ -34,16 +34,6 @@ async def auth_google(
     should_be_admin = email in settings.admin_email_set
 
     if user is None:
-        if payload.device_id:
-            dupe = await db.execute(
-                select(User).where(User.device_id == payload.device_id)
-            )
-            if dupe.scalar_one_or_none() is not None:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="this device is already associated with another account",
-                )
-
         user = User(
             email=email,
             device_id=payload.device_id,
