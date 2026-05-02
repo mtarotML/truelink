@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -61,7 +62,10 @@ async def _fictive_reply_task(
             ]
 
             full_context = [build_system_message(fictive_email)] + history
-            reply_text = await generate_reply(full_context)
+            reply_text, _ = await asyncio.gather(
+                generate_reply(full_context),
+                asyncio.sleep(1.5),
+            )
 
             db.add(
                 Message(
@@ -81,8 +85,10 @@ async def _fictive_reply_task(
         _typing[fictive_id] = False
 
 
-async def _mood_analysis_task(real_user_id: uuid.UUID, peer_id: uuid.UUID) -> None:
-    """Compute mood for the last 10 messages and upsert into conversation_moods."""
+async def _mood_analysis_task(
+    real_user_id: uuid.UUID, peer_id: uuid.UUID, up_to: datetime
+) -> None:
+    """Compute mood for the last 10 messages up to the user's message and upsert into conversation_moods."""
     try:
         async with SessionLocal() as db:
             stmt = (
@@ -97,7 +103,8 @@ async def _mood_analysis_task(real_user_id: uuid.UUID, peer_id: uuid.UUID) -> No
                             Message.sender_id == peer_id,
                             Message.recipient_id == real_user_id,
                         ),
-                    )
+                    ),
+                    Message.created_at <= up_to,
                 )
                 .order_by(Message.created_at.desc())
                 .limit(10)
@@ -375,6 +382,6 @@ async def send_message(
             current_user.id,
         )
 
-    background_tasks.add_task(_mood_analysis_task, current_user.id, peer.id)
+    background_tasks.add_task(_mood_analysis_task, current_user.id, peer.id, msg.created_at)
 
     return MessageOut.model_validate(msg)

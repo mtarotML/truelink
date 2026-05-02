@@ -19,7 +19,13 @@ _SYSTEM_PROMPT = (
     "Given a short chat exchange, return ONLY a valid JSON object with two fields:\n"
     '  "mood_score": a float between -1.0 (very negative) and 1.0 (very positive)\n'
     '  "mood_label": one of exactly these strings: "Very Positive", "Positive", "Neutral", "Negative", "Very Negative"\n'
-    "No explanation, no markdown, no extra text — only the raw JSON object."
+    "No explanation, no markdown, no extra text — only the raw JSON object.\n\n"
+    "Scoring rules:\n"
+    "- Short, dead-end replies that show no effort or interest (e.g. 'ok', 'okay', 'yes', 'no', 'k', 'lol', 'haha', 'sure', 'fine', 'cool') "
+    "must be penalised: apply a penalty of at least -0.3 to the score. "
+    "If the overall conversation already leans positive but the latest reply is one of these low-effort responses, bring the score down noticeably.\n"
+    "- Replies that ask a question, share something personal, or genuinely continue the conversation should be rewarded with a higher score.\n"
+    "- Balance both sides of the conversation: if [You] is engaging but [Match] keeps giving dead-end replies, score negatively."
 )
 
 _FALLBACK = {"mood_score": 0.0, "mood_label": "Neutral"}
