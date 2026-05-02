@@ -81,6 +81,20 @@ export async function apiPostForm<T>(
   return (await res.json()) as T;
 }
 
+export async function apiPatchForm<T>(
+  path: string,
+  form: FormData,
+): Promise<T> {
+  const headers = await authHeaders();
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "PATCH",
+    headers,
+    body: form,
+  });
+  await ensureOk(res);
+  return (await res.json()) as T;
+}
+
 export function mediaUrl(photoUrl: string | null | undefined): string {
   if (!photoUrl) return "";
   if (photoUrl.startsWith("http")) return photoUrl;

@@ -23,3 +23,4 @@ next-env.d.ts
 # Media / certs
 nginx/certs/*
 !nginx/certs/.gitkeep
+CLAUDE.md

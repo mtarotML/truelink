@@ -3,7 +3,7 @@ import logging
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from sqlalchemy import and_, case, desc, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +13,7 @@ from app.core.mood import analyze_mood
 from app.database import SessionLocal, get_db
 from app.models.conversation_mood import ConversationMood
 from app.models.message import Message
+from app.models.mood_streak import MoodStreak
 from app.models.user import User
 from app.schemas.message import ConversationPreview, MessageCreate, MessageOut, MoodOut
 from app.schemas.user import UserPublic
@@ -138,6 +139,17 @@ async def _mood_analysis_task(
                         computed_at=datetime.now(timezone.utc),
                     )
                 )
+            # Update consecutive "Very Positive" streak
+            streak_row = await db.get(MoodStreak, (key_a, key_b))
+            if result["mood_label"] == "Very Positive":
+                if streak_row:
+                    streak_row.streak += 1
+                else:
+                    db.add(MoodStreak(user_a_id=key_a, user_b_id=key_b, streak=1))
+            else:
+                if streak_row:
+                    streak_row.streak = 0
+
             await db.commit()
     except Exception:
         logger.exception(
@@ -301,12 +313,12 @@ async def get_typing(
     return {"typing": _typing.get(user_id, False)}
 
 
-@router.delete("/messages/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/messages/{user_id}")
 async def reset_conversation(
     user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> Response:
     if user_id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -331,7 +343,11 @@ async def reset_conversation(
     mood_row = await db.get(ConversationMood, (key_a, key_b))
     if mood_row:
         await db.delete(mood_row)
+    streak_row = await db.get(MoodStreak, (key_a, key_b))
+    if streak_row:
+        await db.delete(streak_row)
     await db.commit()
+    return Response(status_code=204)
 
 
 @router.post(

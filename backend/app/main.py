@@ -10,9 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.api import admin, auth, discovery, messages, onboarding
+from app.api import admin, auth, discovery, exclusive, messages, onboarding
 from app.config import settings
 from app.database import Base, SessionLocal, engine
+from app.models.exclusive_mode import ExclusiveMode  # noqa: F401 — register table
+from app.models.mood_streak import MoodStreak  # noqa: F401 — register table
 from app.models.user import Gender, Intent, User
 
 _FICTIVE_PROFILES = [
@@ -106,6 +108,7 @@ app.include_router(auth.router)
 app.include_router(onboarding.router)
 app.include_router(discovery.router)
 app.include_router(messages.router)
+app.include_router(exclusive.router)
 app.include_router(admin.router)
 
 media_dir = Path(settings.MEDIA_ROOT)
