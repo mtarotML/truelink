@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.exclusive_mode import ExclusiveMode, ExclusiveStatus
-from app.models.message import Message
 from app.models.user import User
 from app.schemas.user import UserPublic
 
 router = APIRouter(tags=["discovery"])
-
-MAX_CONVERSATIONS = 5
 
 
 @router.get("/discovery", response_model=list[UserPublic])
@@ -48,7 +45,7 @@ async def discovery(
 
     results: list[UserPublic] = []
 
-    # Slot 1 — fictive match (unchanged)
+    # Slot 1 — fictive match of the desired gender
     fictive_stmt = (
         select(User)
         .where(
@@ -61,67 +58,22 @@ async def discovery(
     if fictive:
         results.append(UserPublic.model_validate(fictive))
 
-    # Slot 2 — random real user who matches and has room for more conversations
-
-    # How many conversations does the current user already have?
-    my_conv_count: int = (
-        await db.execute(
-            select(
-                func.count(
-                    func.distinct(
-                        case((Message.sender_id == me, Message.recipient_id), else_=Message.sender_id)
-                    )
-                )
-            ).where(or_(Message.sender_id == me, Message.recipient_id == me))
+    # Slot 2 — stable random real user of the desired gender.
+    # MD5(candidate_id || my_id) gives a deterministic per-user ordering so the
+    # same match is returned regardless of new signups.
+    real_stmt = (
+        select(User)
+        .where(
+            User.is_fictive.is_(False),
+            User.onboarded.is_(True),
+            User.id != me,
+            User.gender == current_user.gender_pref,
         )
-    ).scalar_one()
-
-    if my_conv_count < MAX_CONVERSATIONS:
-        # Subquery: partner ids the current user is already talking to
-        already_talking_sq = (
-            select(
-                case(
-                    (Message.sender_id == me, Message.recipient_id),
-                    else_=Message.sender_id,
-                ).label("partner_id")
-            )
-            .where(or_(Message.sender_id == me, Message.recipient_id == me))
-            .subquery()
-        )
-
-        # Correlated subquery: conversation count of a candidate user
-        candidate_conv_count_sq = (
-            select(
-                func.count(
-                    func.distinct(
-                        case(
-                            (Message.sender_id == User.id, Message.recipient_id),
-                            else_=Message.sender_id,
-                        )
-                    )
-                )
-            )
-            .where(or_(Message.sender_id == User.id, Message.recipient_id == User.id))
-            .correlate(User)
-            .scalar_subquery()
-        )
-
-        real_stmt = (
-            select(User)
-            .where(
-                User.is_fictive.is_(False),
-                User.onboarded.is_(True),
-                User.id != me,
-                User.gender == current_user.gender_pref,
-                User.gender_pref == current_user.gender,
-                User.id.not_in(select(already_talking_sq.c.partner_id)),
-                candidate_conv_count_sq < MAX_CONVERSATIONS,
-            )
-            .order_by(func.random())
-            .limit(1)
-        )
-        real_user = (await db.execute(real_stmt)).scalars().first()
-        if real_user:
-            results.append(UserPublic.model_validate(real_user))
+        .order_by(func.md5(cast(User.id, String) + str(me)))
+        .limit(1)
+    )
+    real_user = (await db.execute(real_stmt)).scalars().first()
+    if real_user:
+        results.append(UserPublic.model_validate(real_user))
 
     return results
