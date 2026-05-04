@@ -109,9 +109,19 @@ export default function PublicProfilePage() {
         {/* Name + intent over photo */}
         <div className="absolute inset-x-0 bottom-0 px-6 pb-6">
           <div className="flex items-end justify-between gap-3">
-            <h1 className="text-3xl font-bold text-white leading-tight">
-              {profile.first_name ?? "Someone"}
-            </h1>
+            <div>
+              <h1 className="text-3xl font-bold text-white leading-tight">
+                {profile.first_name ?? "Someone"}
+              </h1>
+              {profile.is_fictive && (
+                <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-violet-500/80 px-3 py-1 text-xs font-semibold text-white backdrop-blur-sm">
+                  <svg viewBox="0 0 16 16" fill="currentColor" className="h-3 w-3" aria-hidden="true">
+                    <path d="M8 1a.5.5 0 0 1 .45.285l1.428 2.894 3.195.464a.5.5 0 0 1 .277.853L11.13 7.587l.545 3.18a.5.5 0 0 1-.726.527L8 9.765l-2.949 1.55a.5.5 0 0 1-.726-.527l.545-3.18L2.65 5.496a.5.5 0 0 1 .277-.853l3.195-.464L7.55 1.285A.5.5 0 0 1 8 1Z" />
+                  </svg>
+                  AI Profile
+                </span>
+              )}
+            </div>
             {profile.intent && (
               <span className="rounded-pill bg-pink px-3 py-1 text-xs font-semibold text-white shadow-pop">
                 {INTENT_LABEL[profile.intent]}

@@ -15,6 +15,7 @@ interface Profile {
   first_name: string | null;
   photo_url: string | null;
   intent: "long_term" | "short_term" | null;
+  is_fictive: boolean;
 }
 
 interface ExclusiveStatus {
