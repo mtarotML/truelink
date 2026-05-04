@@ -12,6 +12,7 @@ class UserPublic(BaseModel):
     id: uuid.UUID
     first_name: str | None
     photo_url: str | None
+    bio: str | None
     intent: Intent | None
     is_fictive: bool
 
@@ -24,6 +25,7 @@ class UserMe(BaseModel):
     first_name: str | None
     last_name: str | None
     photo_url: str | None
+    bio: str | None
     gender: Gender | None
     gender_pref: Gender | None
     intent: Intent | None
@@ -40,6 +42,7 @@ class UserAdmin(BaseModel):
     first_name: str | None
     last_name: str | None
     photo_url: str | None
+    bio: str | None
     gender: Gender | None
     gender_pref: Gender | None
     intent: Intent | None

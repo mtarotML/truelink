@@ -6,7 +6,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Logo } from "@/components/Logo";
-import { apiDelete, apiGet, apiPostJson, mediaUrl } from "@/lib/api";
+import { apiDelete, apiGet, apiPostForm, apiPostJson, mediaUrl } from "@/lib/api";
 import {
   getImpersonatedUser,
   startImpersonation,
@@ -56,6 +56,20 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+
+  // Create profile modal
+  const [createOpen, setCreateOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [cFirstName, setCFirstName] = useState("");
+  const [cLastName, setCLastName] = useState("");
+  const [cGender, setCGender] = useState<"male" | "female">("female");
+  const [cGenderPref, setCGenderPref] = useState<"male" | "female">("male");
+  const [cIntent, setCIntent] = useState<"long_term" | "short_term">("long_term");
+  const [cBio, setCBio] = useState("");
+  const [cIsFictive, setCIsFictive] = useState(true);
+  const [cPhoto, setCPhoto] = useState<File | null>(null);
+  const [cPhotoPreview, setCPhotoPreview] = useState<string | null>(null);
 
   const isImpersonating = typeof window !== "undefined" && !!getImpersonatedUser();
   const isAdmin = session?.user?.role === "admin" && !isImpersonating;
@@ -131,6 +145,37 @@ export default function AdminPage() {
     }
   }
 
+  function openCreate() {
+    setCFirstName(""); setCLastName(""); setCGender("female"); setCGenderPref("male");
+    setCIntent("long_term"); setCBio(""); setCIsFictive(true);
+    setCPhoto(null); setCPhotoPreview(null); setCreateError(null);
+    setCreateOpen(true);
+  }
+
+  async function createProfile() {
+    if (!cFirstName.trim()) { setCreateError("First name is required."); return; }
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const form = new FormData();
+      form.set("first_name", cFirstName.trim());
+      form.set("last_name", cLastName.trim());
+      form.set("gender", cGender);
+      form.set("gender_pref", cGenderPref);
+      form.set("intent", cIntent);
+      if (cBio.trim()) form.set("bio", cBio.trim());
+      form.set("is_fictive", String(cIsFictive));
+      if (cPhoto) form.set("photo", cPhoto, cPhoto.name);
+      const created = await apiPostForm<AdminUser>("/admin/users", form);
+      setUsers((prev) => (prev ? [created, ...prev] : [created]));
+      setCreateOpen(false);
+    } catch (err) {
+      setCreateError((err as Error).message || "Creation failed.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
   if (status !== "authenticated" || !isAdmin) {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -181,6 +226,13 @@ export default function AdminPage() {
             className="rounded-pill border border-white/15 px-4 py-2 text-xs text-white/80 hover:border-pink hover:text-white"
           >
             Refresh
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            className="rounded-pill bg-pink px-4 py-2 text-xs font-semibold text-white shadow-pop transition hover:opacity-90"
+          >
+            + New profile
           </button>
         </div>
       </div>
@@ -314,6 +366,150 @@ export default function AdminPage() {
           </tbody>
         </table>
       </section>
+
+      {/* Create profile modal */}
+      {createOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4"
+          onClick={() => setCreateOpen(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-3xl border border-white/10 bg-navy-soft p-7 shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-bold">New profile</h2>
+
+            <div className="mt-5 flex flex-col gap-4">
+              {/* Name */}
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-1.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">First name *</span>
+                  <input
+                    type="text"
+                    value={cFirstName}
+                    onChange={(e) => setCFirstName(e.target.value)}
+                    className="h-10 rounded-2xl border border-white/10 bg-navy-deep px-3 text-sm text-white outline-none focus:border-pink"
+                  />
+                </label>
+                <label className="flex flex-1 flex-col gap-1.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Last name</span>
+                  <input
+                    type="text"
+                    value={cLastName}
+                    onChange={(e) => setCLastName(e.target.value)}
+                    className="h-10 rounded-2xl border border-white/10 bg-navy-deep px-3 text-sm text-white outline-none focus:border-pink"
+                  />
+                </label>
+              </div>
+
+              {/* Gender + pref */}
+              <div className="flex gap-3">
+                <label className="flex flex-1 flex-col gap-1.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Gender</span>
+                  <select
+                    value={cGender}
+                    onChange={(e) => setCGender(e.target.value as "male" | "female")}
+                    className="h-10 rounded-2xl border border-white/10 bg-navy-deep px-3 text-sm text-white outline-none focus:border-pink"
+                  >
+                    <option value="male">Male</option>
+                    <option value="female">Female</option>
+                  </select>
+                </label>
+                <label className="flex flex-1 flex-col gap-1.5">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Meets</span>
+                  <select
+                    value={cGenderPref}
+                    onChange={(e) => setCGenderPref(e.target.value as "male" | "female")}
+                    className="h-10 rounded-2xl border border-white/10 bg-navy-deep px-3 text-sm text-white outline-none focus:border-pink"
+                  >
+                    <option value="male">Men</option>
+                    <option value="female">Women</option>
+                  </select>
+                </label>
+              </div>
+
+              {/* Intent */}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Looking for</span>
+                <select
+                  value={cIntent}
+                  onChange={(e) => setCIntent(e.target.value as "long_term" | "short_term")}
+                  className="h-10 rounded-2xl border border-white/10 bg-navy-deep px-3 text-sm text-white outline-none focus:border-pink"
+                >
+                  <option value="long_term">Long term</option>
+                  <option value="short_term">Short term</option>
+                </select>
+              </label>
+
+              {/* Bio */}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Bio (optional)</span>
+                <textarea
+                  value={cBio}
+                  onChange={(e) => setCBio(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  className="resize-none rounded-2xl border border-white/10 bg-navy-deep px-3 py-2 text-sm text-white outline-none focus:border-pink"
+                />
+              </label>
+
+              {/* Photo */}
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Photo (optional)</span>
+                <div className="flex items-center gap-3">
+                  {cPhotoPreview && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cPhotoPreview} alt="preview" className="h-12 w-12 rounded-full object-cover" />
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setCPhoto(f);
+                      setCPhotoPreview(f ? URL.createObjectURL(f) : null);
+                    }}
+                    className="text-sm text-white/70 file:mr-3 file:rounded-pill file:border file:border-white/15 file:bg-transparent file:px-3 file:py-1 file:text-xs file:text-white/80"
+                  />
+                </div>
+              </label>
+
+              {/* is_fictive toggle */}
+              <label className="flex cursor-pointer items-center gap-3">
+                <div
+                  onClick={() => setCIsFictive((v) => !v)}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${cIsFictive ? "bg-pink" : "bg-white/20"}`}
+                >
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${cIsFictive ? "translate-x-5" : "translate-x-0.5"}`} />
+                </div>
+                <span className="text-sm text-white/80">Fictive profile (AI-powered)</span>
+              </label>
+            </div>
+
+            {createError && (
+              <p className="mt-4 rounded-2xl bg-pink/10 px-3 py-2 text-sm text-pink">{createError}</p>
+            )}
+
+            <div className="mt-6 flex gap-3">
+              <button
+                type="button"
+                disabled={creating}
+                onClick={createProfile}
+                className="flex-1 rounded-pill bg-pink py-3 text-sm font-semibold text-white shadow-pop transition hover:opacity-90 disabled:opacity-60"
+              >
+                {creating ? "Creating…" : "Create"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setCreateOpen(false)}
+                className="flex-1 rounded-pill border border-white/15 py-3 text-sm text-white/70 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

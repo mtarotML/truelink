@@ -24,15 +24,15 @@ export function ProfileCard({
   href?: string;
 }) {
   const src = mediaUrl(profile.photo_url);
-  const target = href ?? `/chat/${profile.id}`;
+  const target = href ?? `/profile/${profile.id}`;
 
   return (
     <Link
       href={target}
-      className={`group relative block min-w-0 overflow-hidden rounded-2xl bg-navy-soft shadow-pop transition active:scale-[0.98] ${compact ? "flex-1" : ""}`}
+      className={`group relative flex min-w-0 overflow-hidden rounded-2xl bg-navy-soft shadow-[0_0_35px_-8px_rgba(236,47,138,0.45)] transition active:scale-[0.98] ${compact ? "flex-1" : ""}`}
     >
       <div
-        className={`relative w-full ${compact ? "aspect-[3/4]" : "aspect-[4/5]"}`}
+        className={`relative w-full flex-1 overflow-hidden rounded-2xl ${compact ? "aspect-[3/4]" : "aspect-[4/5]"}`}
       >
         {src ? (
           // eslint-disable-next-line @next/next/no-img-element

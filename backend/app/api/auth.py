@@ -71,6 +71,7 @@ async def update_profile(
     gender: Gender | None = Form(default=None),
     gender_pref: Gender | None = Form(default=None),
     intent: Intent | None = Form(default=None),
+    bio: str | None = Form(default=None, max_length=500),
     photo: UploadFile | None = File(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -81,6 +82,8 @@ async def update_profile(
         current_user.gender_pref = gender_pref
     if intent is not None:
         current_user.intent = intent
+    if bio is not None:
+        current_user.bio = bio.strip() or None
     if photo is not None:
         raw = await photo.read()
         if len(raw) == 0:

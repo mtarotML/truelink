@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Logo } from "@/components/Logo";
 import { ProfileCard } from "@/components/ProfileCard";
-import { apiGet } from "@/lib/api";
+import { apiGet, mediaUrl } from "@/lib/api";
 import { useEffectiveUser } from "@/lib/useEffectiveUser";
 
 interface Profile {
@@ -19,7 +19,41 @@ interface Profile {
 
 interface ExclusiveStatus {
   status: "none" | "active";
+  partner_id: string | null;
   partner_name: string | null;
+}
+
+interface PeerProfile {
+  id: string;
+  first_name: string | null;
+  photo_url: string | null;
+}
+
+interface MessageOut {
+  id: string;
+  sender_id: string;
+  content: string;
+  created_at: string;
+  read_at: string | null;
+}
+
+interface ConversationPreview {
+  user: PeerProfile;
+  last_message: MessageOut;
+  unread_count: number;
+}
+
+function relativeTime(iso: string): string {
+  const d = new Date(iso);
+  const diff = Date.now() - d.getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const days = Math.floor(h / 24);
+  if (days < 7) return `${days}d`;
+  return d.toLocaleDateString([], { day: "2-digit", month: "short" });
 }
 
 function EmptySlot({ locked }: { locked?: boolean }) {
@@ -53,10 +87,21 @@ export default function DiscoveryPage() {
   const router = useRouter();
   const { status } = useSession();
   const me = useEffectiveUser();
-  const [profile, setProfile] = useState<Profile | null | undefined>(undefined);
+  const meId = me?.id;
+  const [profiles, setProfiles] = useState<Profile[] | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [exclusive, setExclusive] = useState<ExclusiveStatus | null>(null);
+  const [conversations, setConversations] = useState<ConversationPreview[] | null>(null);
+
+  const loadConversations = useCallback(async () => {
+    try {
+      const data = await apiGet<ConversationPreview[]>("/conversations");
+      setConversations(data);
+    } catch {
+      // non-critical
+    }
+  }, []);
 
   useEffect(() => {
     if (status === "unauthenticated") router.replace("/");
@@ -66,13 +111,16 @@ export default function DiscoveryPage() {
         return;
       }
       apiGet<Profile[]>("/discovery")
-        .then((data) => setProfile(data[0] ?? null))
+        .then((data) => setProfiles(data))
         .catch((err) => setError((err as Error).message || "Couldn't load your match."));
       apiGet<ExclusiveStatus>("/exclusive")
         .then(setExclusive)
         .catch(() => null);
+      void loadConversations();
+      const id = setInterval(() => void loadConversations(), 5000);
+      return () => clearInterval(id);
     }
-  }, [status, me, router]);
+  }, [status, me, router, loadConversations]);
 
   if (status !== "authenticated") {
     return (
@@ -97,12 +145,6 @@ export default function DiscoveryPage() {
               Admin
             </Link>
           )}
-          <Link
-            href="/messages"
-            className="rounded-pill border border-white/15 px-4 py-1.5 text-xs text-white/80 transition hover:border-pink hover:text-white"
-          >
-            Messages
-          </Link>
           <Link
             href="/profile"
             aria-label="Profile"
@@ -180,21 +222,97 @@ export default function DiscoveryPage() {
       )}
 
       <section className="mt-4">
-        {profile === undefined ? (
+        {profiles === undefined ? (
           <div className="flex justify-center py-10">
             <span className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-pink border-t-transparent" />
           </div>
         ) : (
           <div className="flex w-full gap-2 sm:gap-3">
-            {profile ? (
-              <ProfileCard profile={profile} compact />
+            {profiles[0] ? (
+              <ProfileCard profile={profiles[0]} compact />
+            ) : (
+              <EmptySlot locked={isExclusive} />
+            )}
+            {profiles[1] ? (
+              <ProfileCard profile={profiles[1]} compact />
             ) : (
               <EmptySlot locked={isExclusive} />
             )}
             <EmptySlot locked={isExclusive} />
-            <EmptySlot locked={isExclusive} />
           </div>
         )}
+      </section>
+
+      {/* Messages */}
+      <section className="mt-8">
+        <h2 className="text-xl font-semibold">Messages</h2>
+        {isExclusive && (
+          <p className="mt-1.5 text-xs text-amber-400/70">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.6}
+              className="mb-0.5 mr-1 inline h-3 w-3"
+              aria-hidden="true"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+            Exclusive mode — only your partner&apos;s conversation is visible.
+          </p>
+        )}
+        <div className="mt-3 flex flex-col gap-1">
+          {conversations === null && (
+            <div className="flex justify-center py-6">
+              <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-pink border-t-transparent" />
+            </div>
+          )}
+
+          {conversations !== null && conversations.length === 0 && (
+            <div className="rounded-3xl border border-white/10 bg-navy-soft px-5 py-6 text-center text-sm text-white/50">
+              No conversations yet. Open a match to start chatting.
+            </div>
+          )}
+
+          {conversations?.map((c) => {
+            const photo = mediaUrl(c.user.photo_url);
+            const mine = c.last_message.sender_id === meId;
+            const preview = (mine ? "You: " : "") + c.last_message.content;
+            return (
+              <Link
+                key={c.user.id}
+                href={`/chat/${c.user.id}`}
+                className="flex items-center gap-3 rounded-2xl px-3 py-3 transition hover:bg-white/5 active:scale-[0.99]"
+              >
+                <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-full bg-navy-soft">
+                  {photo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={photo} alt={c.user.first_name ?? "Profile"} className="h-full w-full object-cover" />
+                  ) : null}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className={`truncate text-sm ${c.unread_count > 0 ? "font-semibold text-white" : "font-medium text-white/90"}`}>
+                      {c.user.first_name ?? "Someone"}
+                    </p>
+                    <span className="shrink-0 text-[11px] text-white/40">
+                      {relativeTime(c.last_message.created_at)}
+                    </span>
+                  </div>
+                  <p className={`truncate text-xs ${c.unread_count > 0 ? "text-white/90" : "text-white/50"}`}>
+                    {preview}
+                  </p>
+                </div>
+                {c.unread_count > 0 && (
+                  <span className="ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-pink px-1.5 text-[10px] font-bold text-white">
+                    {c.unread_count}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
       </section>
     </main>
   );

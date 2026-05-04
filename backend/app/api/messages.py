@@ -12,6 +12,7 @@ from app.core.llm import build_system_message, generate_reply
 from app.core.mood import analyze_mood
 from app.database import SessionLocal, get_db
 from app.models.conversation_mood import ConversationMood
+from app.models.exclusive_mode import ExclusiveMode, ExclusiveStatus as ExclusiveModeStatus
 from app.models.message import Message
 from app.models.mood_streak import MoodStreak
 from app.models.user import User
@@ -24,6 +25,23 @@ router = APIRouter(tags=["messages"])
 
 # In-memory typing state — keyed by fictive user id
 _typing: dict[uuid.UUID, bool] = {}
+
+
+async def _get_exclusive_partner_id(
+    db: AsyncSession, user_id: uuid.UUID
+) -> uuid.UUID | None:
+    """Return the exclusive partner's ID if the user is in active exclusive mode."""
+    stmt = select(ExclusiveMode).where(
+        ExclusiveMode.status == ExclusiveModeStatus.active,
+        or_(
+            ExclusiveMode.requester_id == user_id,
+            ExclusiveMode.partner_id == user_id,
+        ),
+    )
+    row = (await db.execute(stmt)).scalar_one_or_none()
+    if not row:
+        return None
+    return row.partner_id if row.requester_id == user_id else row.requester_id
 
 
 async def _fictive_reply_task(
@@ -224,6 +242,10 @@ async def list_conversations(
 
     rows = (await db.execute(stmt)).all()
 
+    excl_partner_id = await _get_exclusive_partner_id(db, me_id)
+    if excl_partner_id is not None:
+        rows = [(msg, peer) for msg, peer in rows if peer.id == excl_partner_id]
+
     unread_stmt = (
         select(Message.sender_id, func.count(Message.id))
         .where(Message.recipient_id == me_id, Message.read_at.is_(None))
@@ -373,6 +395,13 @@ async def send_message(
             detail="complete onboarding before sending messages",
         )
     peer = await _get_peer_or_404(db, user_id)
+
+    excl_partner_id = await _get_exclusive_partner_id(db, current_user.id)
+    if excl_partner_id is not None and user_id != excl_partner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="exclusive mode active: you can only message your exclusive partner",
+        )
 
     content = payload.content.strip()
     if not content:

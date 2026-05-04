@@ -20,6 +20,7 @@ interface UserMe {
   first_name: string | null;
   last_name: string | null;
   photo_url: string | null;
+  bio: string | null;
   gender: Gender | null;
   gender_pref: Gender | null;
   intent: Intent | null;
@@ -33,6 +34,7 @@ export default function ProfilePage() {
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [bio, setBio] = useState("");
   const [gender, setGender] = useState<Gender | null>(null);
   const [genderPref, setGenderPref] = useState<Gender | null>(null);
   const [intent, setIntent] = useState<Intent | null>(null);
@@ -45,6 +47,7 @@ export default function ProfilePage() {
     if (status === "authenticated") {
       apiGet<UserMe>("/me").then((data) => {
         setUser(data);
+        setBio(data.bio ?? "");
         setGender(data.gender);
         setGenderPref(data.gender_pref);
         setIntent(data.intent);
@@ -61,9 +64,11 @@ export default function ProfilePage() {
       if (gender) form.set("gender", gender);
       if (genderPref) form.set("gender_pref", genderPref);
       if (intent) form.set("intent", intent);
+      form.set("bio", bio.trim());
       if (photo) form.set("photo", photo, "selfie.jpg");
       const updated = await apiPatchForm<UserMe>("/me/profile", form);
       setUser(updated);
+      setBio(updated.bio ?? "");
       setPhoto(null);
       setPhotoPreview(null);
       setShowCamera(false);
@@ -155,6 +160,24 @@ export default function ProfilePage() {
             {user.first_name} {user.last_name}
           </p>
           <p className="mt-0.5 text-sm text-white/50">{user.email}</p>
+        </div>
+
+        {/* Bio */}
+        <div>
+          <h3 className="mb-3 text-xs font-medium uppercase tracking-wider text-white/60">
+            Bio
+          </h3>
+          <label className="flex flex-col gap-1.5">
+            <textarea
+              value={bio}
+              onChange={(e) => setBio(e.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="Tell others a bit about yourself…"
+              className="resize-none rounded-2xl border border-white/10 bg-navy-soft px-4 py-3 text-sm text-white placeholder:text-white/30 outline-none transition focus:border-pink"
+            />
+            <span className="text-right text-xs text-white/40">{bio.length}/500</span>
+          </label>
         </div>
 
         {/* Gender */}

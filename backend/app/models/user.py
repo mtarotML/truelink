@@ -34,6 +34,7 @@ class User(Base):
     first_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     last_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     photo_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    bio: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     gender: Mapped[Gender | None] = mapped_column(
         Enum(Gender, name="gender_enum"), nullable=True

@@ -23,6 +23,7 @@ export default function OnboardingPage() {
   const [lastName, setLastName] = useState("");
   const [photo, setPhoto] = useState<Blob | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [bio, setBio] = useState("");
   const [gender, setGender] = useState<Gender | null>(null);
   const [genderPref, setGenderPref] = useState<Gender | null>(null);
   const [intent, setIntent] = useState<Intent | null>(null);
@@ -43,6 +44,8 @@ export default function OnboardingPage() {
       case 1:
         return photo !== null;
       case 2:
+        return true; // bio is optional
+      case 3:
         return gender !== null && genderPref !== null && intent !== null;
       default:
         return false;
@@ -61,6 +64,7 @@ export default function OnboardingPage() {
       form.set("gender", gender);
       form.set("gender_pref", genderPref);
       form.set("intent", intent);
+      if (bio.trim()) form.set("bio", bio.trim());
       if (deviceId) form.set("device_id", deviceId);
       form.set("photo", photo, "selfie.jpg");
       await apiPostForm("/onboarding", form);
@@ -71,7 +75,7 @@ export default function OnboardingPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [photo, gender, genderPref, intent, firstName, lastName, router]);
+  }, [photo, gender, genderPref, intent, bio, firstName, lastName, router]);
 
   if (status !== "authenticated") {
     return (
@@ -85,7 +89,7 @@ export default function OnboardingPage() {
     <main className="flex min-h-screen flex-col px-6 pb-10 pt-10">
       <div className="flex items-center justify-between">
         <Logo className="text-3xl" />
-        <StepDots count={3} active={step} />
+        <StepDots count={4} active={step} />
       </div>
 
       <div className="mt-10 flex flex-1 flex-col">
@@ -136,6 +140,28 @@ export default function OnboardingPage() {
         )}
 
         {step === 2 && (
+          <section className="flex flex-col gap-6">
+            <div>
+              <h2 className="text-2xl font-bold">Add a short bio</h2>
+              <p className="mt-2 text-sm text-white/60">
+                Optional — tell others a bit about yourself.
+              </p>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value)}
+                maxLength={500}
+                rows={4}
+                placeholder="e.g. Coffee lover, hiking enthusiast, looking for someone to share adventures with."
+                className="resize-none rounded-2xl border border-white/10 bg-navy-soft px-4 py-3 text-base text-white placeholder:text-white/30 outline-none transition focus:border-pink"
+              />
+              <span className="text-right text-xs text-white/40">{bio.length}/500</span>
+            </label>
+          </section>
+        )}
+
+        {step === 3 && (
           <section className="flex flex-col gap-8">
             <div>
               <h3 className="text-lg font-semibold">I am</h3>
@@ -195,9 +221,9 @@ export default function OnboardingPage() {
       )}
 
       <div className="mt-8 flex flex-col gap-5">
-        {step < 2 ? (
+        {step < 3 ? (
           <Button disabled={!canNext} onClick={() => setStep((s) => s + 1)}>
-            Continue
+            {step === 2 && !bio.trim() ? "Skip" : "Continue"}
           </Button>
         ) : (
           <Button

@@ -20,6 +20,7 @@ async def complete_onboarding(
     gender: Gender = Form(...),
     gender_pref: Gender = Form(...),
     intent: Intent = Form(...),
+    bio: str | None = Form(default=None, max_length=500),
     device_id: str | None = Form(default=None),
     photo: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
@@ -52,6 +53,7 @@ async def complete_onboarding(
     current_user.gender = gender
     current_user.gender_pref = gender_pref
     current_user.intent = intent
+    current_user.bio = bio.strip() if bio else None
     current_user.photo_url = photo_url
     current_user.onboarded = True
 
